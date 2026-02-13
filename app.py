@@ -34,7 +34,7 @@ def get_page_image(doc, page_num):
 # --- Streamlit UI Layout ---
 st.set_page_config(page_title="Gynecology AI Tutor", layout="wide")
 
-st.title("🩺 AI Gynecology Board Examiner")
+st.title("AI Tutor")
 st.markdown("""
 **Status:** Using updated `google-genai` SDK.
 This tool runs locally. Only the specific page being tested is sent to the AI for analysis.
@@ -84,15 +84,26 @@ if uploaded_file and API_KEY:
         
         # 3. Generate Question (New SDK Syntax)
         with st.spinner(f'Analyzing page {random_page_num + 1}...'):
+            # prompt = """
+            # You are a strict Gynecology Professor. 
+            # Analyze the provided textbook page image.
+            
+            # Task:
+            # 1. Formulate a challenging OPEN-ENDED question based EXCLUSIVELY on this page.
+            # 2. If there are graphs/tables, ask about the data.
+            
+            # Output Language: English.
+            # """
+
             prompt = """
             You are a strict Gynecology Professor. 
             Analyze the provided textbook page image.
             
             Task:
-            1. Formulate a challenging OPEN-ENDED question based EXCLUSIVELY on this page.
+            1. Formulate a short question based EXCLUSIVELY on this page. You can give a multiple choice question or open-ended question.
             2. If there are graphs/tables, ask about the data.
             
-            Output Language: English.
+            Output Language: Hebrew.
             """
             
             # The new SDK call structure
