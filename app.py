@@ -31,10 +31,53 @@ def get_page_image(doc, page_num):
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
     return img
 
+def get_random_chapter_page(doc):
+    """
+    Tries to find the Table of Contents (ToC).
+    Returns: (page_number, chapter_title)
+    """
+    toc = doc.get_toc()
+    
+    # If PDF has no ToC, fallback to completely random page
+    if not toc:
+        total_pages = len(doc)
+        return random.randint(0, total_pages - 1), "Unknown Chapter (No ToC found)"
+    
+    # Filter ToC to keep only Level 1 or 2 headers (Chapters)
+    # toc structure: [level, title, page_num]
+    chapters = [item for item in toc if item[0] <= 2] 
+    
+    if not chapters:
+        # Fallback if filtering failed
+        return random.randint(0, len(doc) - 1), "Random Page"
+
+    # 1. Pick a random chapter
+    chapter_index = random.randint(0, len(chapters) - 1)
+    selected_chapter = chapters[chapter_index]
+    
+    chapter_title = selected_chapter[1]
+    start_page = selected_chapter[2] - 1 # PyMuPDF pages are 0-indexed
+    
+    # 2. Find the end page (it's the start of the next chapter)
+    if chapter_index < len(chapters) - 1:
+        end_page = chapters[chapter_index + 1][2] - 2
+    else:
+        end_page = len(doc) - 1
+        
+    # Validation to prevent errors if a chapter is just 1 page
+    if end_page < start_page:
+        end_page = start_page
+
+    # 3. Pick a random page WITHIN this chapter
+    random_page_num = random.randint(start_page, end_page)
+    
+    return random_page_num, chapter_title
+
 # --- Streamlit UI Layout ---
-st.set_page_config(page_title="Gynecology AI Tutor", layout="wide")
+st.set_page_config(page_title="AI Tutor", layout="wide")
 
 st.title("AI Tutor")
+st.caption("Mode: Chapter-Based Selection")
 st.markdown("""
 **Status:** Using updated `google-genai` SDK.
 This tool runs locally. Only the specific page being tested is sent to the AI for analysis.
@@ -73,36 +116,40 @@ if uploaded_file and API_KEY:
         st.session_state.feedback = None
         st.session_state.current_question = None
         
-        # 1. Random Page
-        total_pages = len(doc)
-        random_page_num = random.randint(0, total_pages - 1)
-        st.session_state.current_page_num = random_page_num
+        # 1. Get page from a specific chapter
+        page_num, chapter_title = get_random_chapter_page(doc)
+        st.session_state.current_page_num = page_num
+        st.session_state.current_chapter = chapter_title
         
         # 2. Image Conversion
-        img = get_page_image(doc, random_page_num)
+        img = get_page_image(doc, page_num)
         st.session_state.page_image = img
         
         # 3. Generate Question (New SDK Syntax)
-        with st.spinner(f'Analyzing page {random_page_num + 1}...'):
-            # prompt = """
+        with st.spinner(f'Analyzing page {page_num + 1}...'):
+            # prompt = f"""
             # You are a strict Gynecology Professor. 
+            # The student is being tested on the chapter: "{chapter_title}".
             # Analyze the provided textbook page image.
             
             # Task:
             # 1. Formulate a challenging OPEN-ENDED question based EXCLUSIVELY on this page.
             # 2. If there are graphs/tables, ask about the data.
+            # 3. Context: The topic is {chapter_title}.
             
             # Output Language: English.
             # """
-
+            
             prompt = """
-            You are a strict Gynecology Professor. 
+            You are a Gynecology Professor. 
+            The student is being tested on the chapter: "{chapter_title}".
             Analyze the provided textbook page image.
             
             Task:
             1. Formulate a short question based EXCLUSIVELY on this page. You can give a multiple choice question or open-ended question.
             2. If there are graphs/tables, ask about the data.
-            
+            3. Context: The topic is {chapter_title}.
+
             Output Language: Hebrew.
             """
             
