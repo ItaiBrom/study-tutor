@@ -8,7 +8,10 @@ import os
 # --- Configuration ---
 API_KEY = None 
 
-# chosen_model = 'gemini-2.0-flash-lite'
+# --- DEBUG CONFIGURATION ---
+# Put the name of your local PDF file here for rapid testing
+DEBUG_PDF_PATH = "beckmann_and_lings_obstetrics_and_gynecology_9th_edition.pdf" 
+
 chosen_model = 'gemini-2.5-flash'
 
 # --- Helper Functions ---
@@ -16,10 +19,13 @@ def get_gemini_client(api_key):
     """Initializes the new GenAI client"""
     return genai.Client(api_key=api_key)
 
-def load_pdf(uploaded_file):
+def load_pdf(file_stream):
     """Loads the PDF file into memory (RAM only)"""
-    if uploaded_file is not None:
-        doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    if file_stream is not None:
+        # We read the stream bytes so PyMuPDF can handle both 
+        # Streamlit UploadedFile and standard Python File Objects
+        file_bytes = file_stream.read()
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
         return doc
     return None
 
@@ -77,11 +83,7 @@ def get_random_chapter_page(doc):
 st.set_page_config(page_title="AI Tutor", layout="wide")
 
 st.title("AI Tutor")
-st.caption("Mode: Chapter-Based Selection")
-st.markdown("""
-**Status:** Using updated `google-genai` SDK.
-This tool runs locally. Only the specific page being tested is sent to the AI for analysis.
-""")
+st.caption(f"Model: {chosen_model}")
 
 # Sidebar
 with st.sidebar:
@@ -90,7 +92,16 @@ with st.sidebar:
     if user_api_key:
         API_KEY = user_api_key
     
-    uploaded_file = st.file_uploader("Upload Textbook (PDF)", type=["pdf"])
+    # --- LOGIC CHANGE: Check for local debug file first ---
+    uploaded_file = None
+    
+    if os.path.exists(DEBUG_PDF_PATH):
+        st.success(f"🛠️ Debug Mode: Auto-loaded '{DEBUG_PDF_PATH}'")
+        # Open the local file in binary read mode
+        uploaded_file = open(DEBUG_PDF_PATH, "rb")
+    else:
+        # Fallback to standard uploader if debug file is missing
+        uploaded_file = st.file_uploader("Upload Textbook (PDF)", type=["pdf"])
     
     st.divider()
     if st.button("Reset / Clear History"):
@@ -106,6 +117,8 @@ if 'page_image' not in st.session_state:
     st.session_state.page_image = None
 if 'feedback' not in st.session_state:
     st.session_state.feedback = None
+if 'current_chapter' not in st.session_state:
+    st.session_state.current_chapter = None
 
 # Main Logic
 if uploaded_file and API_KEY:
@@ -125,22 +138,9 @@ if uploaded_file and API_KEY:
         img = get_page_image(doc, page_num)
         st.session_state.page_image = img
         
-        # 3. Generate Question (New SDK Syntax)
-        with st.spinner(f'Analyzing page {page_num + 1}...'):
-            # prompt = f"""
-            # You are a strict Gynecology Professor. 
-            # The student is being tested on the chapter: "{chapter_title}".
-            # Analyze the provided textbook page image.
-            
-            # Task:
-            # 1. Formulate a challenging OPEN-ENDED question based EXCLUSIVELY on this page.
-            # 2. If there are graphs/tables, ask about the data.
-            # 3. Context: The topic is {chapter_title}.
-            
-            # Output Language: English.
-            # """
-            
-            prompt = """
+        # 3. Generate Question
+        with st.spinner(f'Analyzing page {page_num + 1} ({chapter_title})...'):
+            prompt = f"""
             You are a Gynecology Professor. 
             The student is being tested on the chapter: "{chapter_title}".
             Analyze the provided textbook page image.
@@ -153,7 +153,6 @@ if uploaded_file and API_KEY:
             Output Language: Hebrew.
             """
             
-            # The new SDK call structure
             response = client.models.generate_content(
                 model=chosen_model,
                 contents=[prompt, img]
@@ -162,7 +161,7 @@ if uploaded_file and API_KEY:
 
     # Display Question
     if st.session_state.current_question:
-        st.info(f"**Question (Page {st.session_state.current_page_num + 1}):**\n\n{st.session_state.current_question}")
+        st.info(f"**Topic:** {st.session_state.current_chapter}\n\n**Question (Page {st.session_state.current_page_num + 1}):**\n\n{st.session_state.current_question}")
         
         user_answer = st.text_area("Your Answer:", height=150)
         
@@ -176,6 +175,7 @@ if uploaded_file and API_KEY:
                     
                     Task:
                     Compare the answer to the image provided. Correct errors based ONLY on the image.
+                    Output Language: Hebrew.
                     """
                     
                     response = client.models.generate_content(
@@ -195,4 +195,4 @@ if uploaded_file and API_KEY:
 elif not API_KEY:
     st.warning("👈 Enter API Key in sidebar.")
 elif not uploaded_file:
-    st.info("👈 Upload PDF in sidebar.")
+    st.info(f"👈 Please place '{DEBUG_PDF_PATH}' in the folder OR upload a PDF in sidebar.")

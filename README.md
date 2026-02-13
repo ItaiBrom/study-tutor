@@ -1,4 +1,4 @@
-# AI Tutor 🩺
+# AI Tutor
 
 A study tool for residency board exams using Gemini AI.
 
